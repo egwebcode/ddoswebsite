@@ -1,56 +1,74 @@
-import os
+import threading
 import requests
-import concurrent.futures
-from time import time
+from queue import Queue
+import os
+import signal
+import sys
 
-# Pasta de saída
-output_dir = "cpf_results"
-os.makedirs(output_dir, exist_ok=True)
+API_URL = "https://valores-nu.it.com/consult/consulta.php?cpf="  # ⬅️ Coloque sua API aqui
+NUM_THREADS = 100
+saida_dir = "resultados"
 
-# Cálculo de dígitos verificadores do CPF
-def calc_dv(cpf_base, fator):
-    total = sum(int(d) * f for d, f in zip(cpf_base, range(fator, 1, -1)))
-    resto = total % 11
-    return '0' if resto < 2 else str(11 - resto)
+os.makedirs(saida_dir, exist_ok=True)
 
-# Geração de CPFs válidos
+fila = Queue()
+parar = False
+
+def calcular_digito(cpf, fator):
+    total = sum(int(d) * (fator - i) for i, d in enumerate(cpf))
+    resto = (total * 10) % 11
+    return str(resto if resto < 10 else 0)
+
 def gerar_cpfs_validos():
-    for i in range(1, 1_000_000_000):  # de 000000001 até 999999999
-        base = f"{i:09}"
-        d1 = calc_dv(base, 10)
-        d2 = calc_dv(base + d1, 11)
-        cpf = base + d1 + d2
-        yield f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+    for i in range(1, 1_000_000_000):
+        base = f"{i:09d}"
+        d1 = calcular_digito(base, 10)
+        d2 = calcular_digito(base + d1, 11)
+        yield f"{base[:3]}.{base[3:6]}.{base[6:9]}-{d1}{d2}"
 
-# Consulta e salvamento
-def consultar_cpf(cpf):
-    url = f"https://valores-nu.it.com/consult/consulta.php?cpf={cpf}"
-    try:
-        r = requests.get(url, timeout=5)
-        r.raise_for_status()
-        data = r.json()
-        if "nome" in data:
-            meio = cpf[4:11].replace('.', '')
-            caminho = os.path.join(output_dir, f"{meio}.txt")
-            with open(caminho, "w", encoding="utf-8") as f:
-                f.write("--------------------------\n")
-                for k, v in data.items():
-                    f.write(f"{k.upper()}: {v}\n")
-                f.write("--------------------------\n")
-            print(f"[✅] {cpf} → {data['nome']}")
-        else:
-            print(f"[⚠️] {cpf} sem dados.")
-    except Exception as e:
-        print(f"[❌] {cpf} ERRO: {e}")
+def salvar_em_arquivo(cpf, conteudo):
+    meio = cpf[4:7] + "." + cpf[8:11]
+    nome_arquivo = os.path.join(saida_dir, f"{meio}.txt")
+    with open(nome_arquivo, "a", encoding="utf-8") as f:
+        f.write(f"-----------------------------\n")
+        f.write(f"CPF: {cpf}\n{conteudo}\n")
 
-# Execução com 400 threads
+def consultar_api():
+    while not parar:
+        try:
+            cpf = fila.get(timeout=1)
+        except:
+            continue
+        try:
+            response = requests.get(API_URL + cpf, timeout=5)
+            if response.status_code == 200 and "NOME" in response.text:
+                print(f"[✅] {cpf}")
+                salvar_em_arquivo(cpf, response.text.strip())
+            else:
+                print(f"[❌] {cpf} sem dados")
+        except Exception as e:
+            print(f"[❌] {cpf} ERRO: {e}")
+        finally:
+            fila.task_done()
+
+def aguardar_enter():
+    global parar
+    input("\n🔴 Pressione [Enter] para parar...\n")
+    parar = True
+
 def main():
-    print("🔍 Iniciando consultas com 400 threads...")
-    cpfs = gerar_cpfs_validos()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=400) as executor:
-        executor.map(consultar_cpf, cpfs)
+    for _ in range(NUM_THREADS):
+        threading.Thread(target=consultar_api, daemon=True).start()
+
+    threading.Thread(target=aguardar_enter, daemon=True).start()
+
+    for cpf in gerar_cpfs_validos():
+        if parar:
+            break
+        fila.put(cpf)
+
+    fila.join()
+    print("\n✅ Finalizado.")
 
 if __name__ == "__main__":
-    inicio = time()
     main()
-    print(f"\n⏱️ Finalizado em {time() - inicio:.2f} segundos")
