@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Navegador Mobile com Favoritos JS</title>
+<style>
+  /* Reset e base */
+  * {
+    box-sizing: border-box;
+  }
+  body, html {
+    margin: 0; padding: 0; height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+      Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    background-color: var(--bg, #fff);
+    color: var(--fg, #000);
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus {
+    outline: none;
+  }
+
+  /* Variáveis de tema */
+  :root {
+    --bg: #fff;
+    --fg: #000;
+    --header-bg: #333;
+    --btn-bg: #555;
+    --btn-hover-bg: #777;
+    --btn-active-bg: #444;
+    --panel-bg: #f8f8f8;
+    --border-color: #ddd;
+  }
+  [data-theme="dark"] {
+    --bg: #121212;
+    --fg: #eee;
+    --header-bg: #222;
+    --btn-bg: #444;
+    --btn-hover-bg: #666;
+    --btn-active-bg: #222;
+    --panel-bg: #1e1e1e;
+    --border-color: #444;
+  }
+
+  /* Header fixo e estilizado */
+  header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 48px;
+    background: var(--header-bg);
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    z-index: 1000;
+    user-select: none;
+    overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
+  }
+  header::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Edge */
+  }
+  header > * {
+    flex-shrink: 0;
+    margin-right: 6px;
+  }
+  header input[type="text"] {
+    flex-grow: 1;
+    min-width: 160px;
+    max-width: 1000px;
+    height: 32px;
+    border-radius: 5px;
+    border: none;
+    padding: 0 12px;
+    font-size: 16px;
+    color: var(--fg);
+    background: var(--bg);
+    box-shadow: inset 0 0 3px var(--border-color);
+  }
+  header input[type="text"]::placeholder {
+    color: #888;
+  }
+  header input[type="text"]:focus {
+    box-shadow: 0 0 5px 2px #3399ff;
+  }
+
+  /* Botões estilizados */
+  button {
+    background: var(--btn-bg);
+    border: none;
+    color: var(--fg);
+    font-size: 18px;
+    border-radius: 5px;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    transition: background 0.2s ease;
+    min-width: 36px;
+    height: 32px;
+  }
+  button:hover, button:focus {
+    background: var(--btn-hover-bg);
+  }
+  button:active {
+    background: var(--btn-active-bg);
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  button[title] {
+    position: relative;
+  }
+  button[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 120%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--btn-bg);
+    color: var(--fg);
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+    opacity: 0.9;
+  }
+
+  /* iframe ocupa todo o espaço abaixo do header */
+  #viewer {
+    position: fixed;
+    top: 48px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    border: none;
+    height: calc(100% - 48px);
+    background: var(--bg);
+  }
+
+  /* Painéis */
+  .panel {
+    position: fixed;
+    top: 48px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--panel-bg);
+    color: var(--fg);
+    z-index: 2000;
+    display: none;
+    flex-direction: column;
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .panel.active {
+    display: flex;
+  }
+  .panel h2 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  .list-item {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    word-break: break-word;
+  }
+  .list-item:hover {
+    background: var(--btn-hover-bg);
+  }
+  .list-item span.delBtn {
+    background: #c44;
+    color: #fff;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    user-select: none;
+  }
+  .list-item span.delBtn:hover {
+    background: #a22;
+  }
+  /* Input para nome e url JS */
+  #addBookmarkForm {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  #addBookmarkForm input[type="text"] {
+    flex: 1;
+    padding: 6px 8px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: 1px solid var(--border-color);
+    background: var(--bg);
+    color: var(--fg);
+  }
+  #addBookmarkForm button {
+    min-width: 80px;
+  }
+</style>
+</head>
+<body data-theme="light">
+
+<header>
+  <button id="backBtn" title="Voltar" disabled>◀</button>
+  <button id="forwardBtn" title="Avançar" disabled>▶</button>
+  <button id="reloadBtn" title="Recarregar">⟳</button>
+  <input id="url" type="text" placeholder="Digite a URL e pressione Enter" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+  <button id="historyBtn" title="Histórico">📜</button>
+  <button id="bookmarksBtn" title="Favoritos">⭐</button>
+  <button id="jsToggleBtn" title="Ativar/Desativar Javascript">JS On</button>
+  <button id="themeToggleBtn" title="Tema">🎨</button>
+</header>
+
+<iframe id="viewer" sandbox="allow-same-origin allow-forms allow-popups allow-scripts"></iframe>
+
+<div id="historyPanel" class="panel" aria-label="Painel de histórico">
+  <h2>Histórico</h2>
+  <div id="historyList"></div>
+  <button onclick="togglePanel('historyPanel')">Fechar</button>
+</div>
+
+<div id="bookmarksPanel" class="panel" aria-label="Painel de favoritos">
+  <h2>Favoritos</h2>
+
+  <form id="addBookmarkForm" onsubmit="event.preventDefault(); addBookmark();">
+    <input id="bookmarkName" type="text" placeholder="Nome ou JS externo (ex: devtools.js)" autocomplete="off" required />
+    <input id="bookmarkUrl" type="text" placeholder="URL ou js: código JS local" autocomplete="off" required />
+    <button type="submit">Adicionar</button>
+  </form>
+
+  <div id="bookmarksList"></div>
+  <button onclick="togglePanel('bookmarksPanel')">Fechar</button>
+</div>
+
+<script>
+  const iframe = document.getElementById('viewer');
+  const urlInput = document.getElementById('url');
+  const historyPanel = document.getElementById('historyPanel');
+  const historyList = document.getElementById('historyList');
+  const bookmarksPanel = document.getElementById('bookmarksPanel');
+  const bookmarksList = document.getElementById('bookmarksList');
+  const backBtn = document.getElementById('backBtn');
+  const forwardBtn = document.getElementById('forwardBtn');
+  const reloadBtn = document.getElementById('reloadBtn');
+  const historyBtn = document.getElementById('historyBtn');
+  const bookmarksBtn = document.getElementById('bookmarksBtn');
+  const jsToggleBtn = document.getElementById('jsToggleBtn');
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  const bookmarkNameInput = document.getElementById('bookmarkName');
+  const bookmarkUrlInput = document.getElementById('bookmarkUrl');
+
+  let historyData = JSON.parse(localStorage.getItem('browserHistory') || '[]');
+  let bookmarks = JSON.parse(localStorage.getItem('browserBookmarks') || '[]');
+  let theme = localStorage.getItem('browserTheme') || 'light';
+  let jsEnabled = localStorage.getItem('browserJsEnabled') !== 'false';
+
+  let sessionHistory = [];
+  let sessionPointer = -1;
+
+  function applyTheme() {
+    document.body.setAttribute('data-theme', theme);
+    localStorage.setItem('browserTheme', theme);
+  }
+
+  function applySandbox() {
+    if (jsEnabled) {
+      iframe.setAttribute('sandbox', 'allow-same-origin allow-forms allow-popups allow-scripts');
+      jsToggleBtn.textContent = 'JS On';
+      localStorage.setItem('browserJsEnabled', 'true');
+    } else {
+      iframe.setAttribute('sandbox', 'allow-same-origin allow-forms allow-popups');
+      jsToggleBtn.textContent = 'JS Off';
+      localStorage.setItem('browserJsEnabled', 'false');
+    }
+  }
+
+  function renderHistory() {
+    historyList.innerHTML = '';
+    if (historyData.length === 0) {
+      historyList.innerHTML = '<div>Nenhum histórico</div>';
+      return;
+    }
+    historyData.forEach((entry, i) => {
+      const div = document.createElement('div');
+      div.className = 'list-item';
+      div.title = entry.time;
+      div.textContent = entry.url;
+
+      const delBtn = document.createElement('span');
+      delBtn.className = 'delBtn';
+      delBtn.textContent = '✕';
+      delBtn.onclick = e => {
+        e.stopPropagation();
+        historyData.splice(i, 1);
+        localStorage.setItem('browserHistory', JSON.stringify(historyData));
+        renderHistory();
+      };
+
+      div.onclick = () => {
+        loadUrl(entry.url);
+        togglePanel('historyPanel');
+      };
+
+      div.appendChild(delBtn);
+      historyList.appendChild(div);
+    });
+  }
+
+  function renderBookmarks() {
+    bookmarksList.innerHTML = '';
+    if (bookmarks.length === 0) {
+      bookmarksList.innerHTML = '<div>Nenhum favorito</div>';
+      return;
+    }
+    bookmarks.forEach(({name, url}, i) => {
+      const div = document.createElement('div');
+      div.className = 'list-item';
+      div.textContent = name + ' — ' + url;
+
+      const delBtn = document.createElement('span');
+      delBtn.className = 'delBtn';
+      delBtn.textContent = '✕';
+      delBtn.onclick = e => {
+        e.stopPropagation();
+        bookmarks.splice(i, 1);
+        localStorage.setItem('browserBookmarks', JSON.stringify(bookmarks));
+        renderBookmarks();
+      };
+
+      div.onclick = () => {
+        handleBookmarkClick(bookmarks[i]);
+        togglePanel('bookmarksPanel');
+      };
+
+      div.appendChild(delBtn);
+      bookmarksList.appendChild(div);
+    });
+  }
+
+  function addBookmark() {
+    const name = bookmarkNameInput.value.trim();
+    let url = bookmarkUrlInput.value.trim();
+
+    if (!name || !url) return alert('Preencha nome e URL/código.');
+
+    // Se não começa com http nem js, assume JS remoto no eg-iframe.netlify.app
+    if (!url.startsWith('http') && !url.startsWith('js:')) {
+      url = 'https://eg-iframe.netlify.app/' + url;
+    }
+
+    // Verifica duplicado
+    if (bookmarks.some(b => b.name === name && b.url === url)) {
+      alert('Favorito já existe.');
+      return;
+    }
+
+    bookmarks.unshift({name, url});
+    if (bookmarks.length > 200) bookmarks.pop();
+    localStorage.setItem('browserBookmarks', JSON.stringify(bookmarks));
+    renderBookmarks();
+
+    bookmarkNameInput.value = '';
+    bookmarkUrlInput.value = '';
+  }
+
+  function loadUrl(rawUrl) {
+    let url = rawUrl.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    iframe.src = url;
+    urlInput.value = url;
+
+    historyData.unshift({ url, time: new Date().toLocaleString() });
+    if (historyData.length > 200) historyData.pop();
+    localStorage.setItem('browserHistory', JSON.stringify(historyData));
+    renderHistory();
+
+    if (sessionPointer < sessionHistory.length - 1) {
+      sessionHistory = sessionHistory.slice(0, sessionPointer + 1);
+    }
+    sessionHistory.push(url);
+    sessionPointer++;
+    updateNavButtons();
+  }
+
+  function injectJS(code) {
+    try {
+      const iframeWindow = iframe.contentWindow;
+      if (!iframeWindow) throw 'Iframe não disponível';
+
+      // Avalia código no contexto do iframe
+      iframeWindow.eval(code);
+      alert('JS executado com sucesso!');
+    } catch (e) {
+      alert('Erro ao executar JS: ' + e);
+    }
+  }
+
+  async function handleBookmarkClick(bookmark) {
+    const { name, url } = bookmark;
+
+    if (url.startsWith('js:')) {
+      // Código JS local
+      const code = url.substring(3);
+      injectJS(code);
+      return;
+    }
+
+    if (url.endsWith('.js')) {
+      // Busca JS externo e executa
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('Falha ao baixar o script');
+        const code = await resp.text();
+        injectJS(code);
+      } catch (e) {
+        alert('Erro ao carregar script externo: ' + e.message);
+      }
+      return;
+    }
+
+    // Abre URL normal no iframe
+    loadUrl(url);
+  }
+
+  function goBack() {
+    if (sessionPointer > 0) {
+      sessionPointer--;
+      iframe.src = sessionHistory[sessionPointer];
+      urlInput.value = sessionHistory[sessionPointer];
+      updateNavButtons();
+    }
+  }
+  function goForward() {
+    if (sessionPointer < sessionHistory.length - 1) {
+      sessionPointer++;
+      iframe.src = sessionHistory[sessionPointer];
+      urlInput.value = sessionHistory[sessionPointer];
+      updateNavButtons();
+    }
+  }
+  function updateNavButtons() {
+    backBtn.disabled = sessionPointer <= 0;
+    forwardBtn.disabled = sessionPointer >= sessionHistory.length - 1;
+  }
+
+  urlInput.addEventListener('keypress', e => {
+    if (e.key === 'Enter') {
+      loadUrl(urlInput.value);
+    }
+  });
+
+  backBtn.onclick = goBack;
+  forwardBtn.onclick = goForward;
+  reloadBtn.onclick = () => {
+    try {
+      iframe.contentWindow.location.reload();
+    } catch {
+      iframe.src = iframe.src;
+    }
+  };
+  historyBtn.onclick = () => togglePanel('historyPanel');
+  bookmarksBtn.onclick = () => togglePanel('bookmarksPanel');
+
+  jsToggleBtn.onclick = () => {
+    jsEnabled = !jsEnabled;
+    applySandbox();
+  };
+  themeToggleBtn.onclick = () => {
+    theme = theme === 'light' ? 'dark' : 'light';
+    applyTheme();
+  };
+
+  function togglePanel(panelId) {
+    const panel = document.getElementById(panelId);
+    panel.classList.toggle('active');
+  }
+
+  applyTheme();
+  applySandbox();
+  renderHistory();
+  renderBookmarks();
+  updateNavButtons();
+
+  // Página inicial
+  loadUrl('https://www.google.com');
+</script>
+
+</body>
+</html>
